@@ -5,7 +5,7 @@ An open-source tool to download answer scripts from AKTU portal.
 
 Author: Deepanshu Yadav
 License: MIT
-Repository: [Your Repository URL]
+Repository: https://github.com/Dydipanshu/AktuAnswerCopy
 Version: 1.0.0
 
 Usage:

@@ -11,7 +11,7 @@ export type DownloadJob = {
   downloadedPages: number;
   message?: string;
   filename?: string;
-  buffer?: Buffer;
+  buffer?: Uint8Array;
   error?: {
     code: string;
     message: string;
@@ -54,7 +54,7 @@ export function updateJob(id: string, patch: Partial<DownloadJob>) {
   return updated;
 }
 
-export function finishJob(id: string, buffer: Buffer, filename: string) {
+export function finishJob(id: string, buffer: Uint8Array, filename: string) {
   return updateJob(id, {
     status: 'done',
     buffer,

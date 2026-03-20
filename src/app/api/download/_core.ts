@@ -488,9 +488,8 @@ export async function downloadAnswerPdf({ cookies, courseValue, subject, evalLev
   }
 
   const pdfBytes = await pdfDoc.save();
-  const buffer = Buffer.from(pdfBytes);
   return {
-    buffer,
+    buffer: pdfBytes,
     filename: `${subject.code}_${Date.now()}.pdf`,
     totalPages,
     downloadedPages: pages.length,

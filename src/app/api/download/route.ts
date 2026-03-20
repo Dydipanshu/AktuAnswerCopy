@@ -73,7 +73,12 @@ export async function GET(request: NextRequest) {
       return jsonError('E_JOB_NOT_READY', 'Download not ready', 409, { requestId: job.id });
     }
 
-    return new NextResponse(job.buffer, {
+    const body = job.buffer.buffer.slice(
+      job.buffer.byteOffset,
+      job.buffer.byteOffset + job.buffer.byteLength
+    );
+
+    return new NextResponse(body, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${job.filename}"`,

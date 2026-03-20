@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3f1ea;
+  --paper-strong: #efe7dd;
+  --ink: #0f172a;
+  --ink-soft: #475569;
+  --accent: #0f766e;
+  --accent-strong: #0a5b54;
+}
+
+@theme inline {
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+}
+
+* {
+  text-rendering: optimizeLegibility;
+}

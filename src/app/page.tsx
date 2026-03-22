@@ -222,8 +222,20 @@ export default function Home() {
         return;
       }
 
+      const nextSubjects = data.subjects || [];
+      if (!nextSubjects.length) {
+        setUiError({
+          code: 'E_NO_SUBJECTS',
+          message: 'No subjects found for that course.',
+          hint: 'Go back and select the other course option shown.',
+        });
+        setStep('course');
+        setSelectedCourse('');
+        return;
+      }
+
       setCookies(data.cookies);
-      setSubjects(data.subjects || []);
+      setSubjects(nextSubjects);
       setEvalLevel(data.evalLevel || null);
       setStep('subjects');
     } catch {
@@ -395,6 +407,9 @@ export default function Home() {
                     placeholder="Enter your password"
                     required
                   />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Use the AKTU answer-copy password (usually a 7-digit number), not your college portal password.
+                  </p>
                 </div>
                 <button
                   type="submit"

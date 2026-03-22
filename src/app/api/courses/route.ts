@@ -1,12 +1,68 @@
 import { NextRequest } from 'next/server';
 import axios from 'axios';
+import type { AxiosInstance } from 'axios';
 import { CookieJar } from 'tough-cookie';
 import { wrapper } from 'axios-cookiejar-support';
 import { jsonError, jsonOk, makeRequestId } from '../_utils';
-import { findSelectOptions } from '../_parse';
+import { findSelectOptions, pickNonPlaceholder } from '../_parse';
 
 function looksLikeLoginPage(html: string) {
   return typeof html === 'string' && html.includes('txtUserID') && html.includes('txtPasswrd');
+}
+
+function extractHiddenFields(html: string) {
+  const fields: Record<string, string> = {};
+
+  const vsMatch = html.match(/id="__VIEWSTATE"[^>]*value="([^"]+)"/);
+  if (vsMatch) fields['__VIEWSTATE'] = vsMatch[1];
+
+  const vsgMatch = html.match(/id="__VIEWSTATEGENERATOR"[^>]*value="([^"]+)"/);
+  if (vsgMatch) fields['__VIEWSTATEGENERATOR'] = vsgMatch[1];
+
+  const evMatch = html.match(/id="__EVENTVALIDATION"[^>]*value="([^"]+)"/);
+  if (evMatch) fields['__EVENTVALIDATION'] = evMatch[1];
+
+  return fields;
+}
+
+async function fetchSubjectCount(client: AxiosInstance, courseValue: string, hiddenFields: Record<string, string>, evalLevel: string) {
+  const formData = new URLSearchParams({
+    ...hiddenFields,
+    ctl00$Ajaxmastercontentplaceholder$DdlEvalLevel: evalLevel,
+    ctl00$Ajaxmastercontentplaceholder$ddlexamname: courseValue,
+    ctl00$Ajaxmastercontentplaceholder$TxtGoTo: '',
+    ctl00$Ajaxmastercontentplaceholder$TxtGoTo0: '',
+    ctl00$AjaxMstrScrpMngr: 'ctl00$Ajaxmastercontentplaceholder$UpdatepnlPrintStatus|ctl00$Ajaxmastercontentplaceholder$ddlexamname',
+    __EVENTTARGET: '',
+    __EVENTARGUMENT: '',
+    __ASYNCPOST: 'true',
+  });
+
+  const ajaxResp = await client.post(ANSWER_URL, formData.toString(), {
+    headers: {
+      ...HEADERS,
+      'Referer': ANSWER_URL,
+      'X-MicrosoftAjax': 'Delta=true',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+    },
+  });
+
+  if (looksLikeLoginPage(ajaxResp.data)) {
+    return 0;
+  }
+
+  let tableMatch = ajaxResp.data.match(/id="ctl00_Ajaxmastercontentplaceholder_GVASIDDetails"[^>]*>([\s\S]*?)<\/table>/);
+  if (!tableMatch) {
+    tableMatch = ajaxResp.data.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
+  }
+  if (!tableMatch) {
+    return 0;
+  }
+
+  const tableHtml = tableMatch[1];
+  const rows = tableHtml.match(/<tr[^>]*class="rowstyle"[^>]*>[\s\S]*?<\/tr>/g) || [];
+  return rows.length;
 }
 
 const BASE_URL = 'https://aktuexams.in';
@@ -59,10 +115,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const hiddenFields = extractHiddenFields(response.data);
+    const evalOptions = findSelectOptions(response.data, 'DdlEvalLevel');
+    const evalPick = pickNonPlaceholder(evalOptions, 'main') || pickNonPlaceholder(evalOptions);
+    const evalLevel = evalPick?.value || evalPick?.label || 'Main Valuation';
+
+    let filteredCourses = courses;
+    if (courses.length > 1) {
+      const validCourses: Course[] = [];
+      for (const course of courses) {
+        try {
+          const count = await fetchSubjectCount(client, course.value, hiddenFields, evalLevel);
+          if (count > 0) validCourses.push(course);
+        } catch (err) {
+          console.warn(`Course probe failed for ${course.value}:`, (err as Error).message);
+        }
+      }
+      if (validCourses.length) {
+        filteredCourses = validCourses;
+      }
+    }
+
     return jsonOk(
       {
         success: true,
-        courses,
+        courses: filteredCourses,
         cookies: jar.serializeSync(),
       },
       requestId

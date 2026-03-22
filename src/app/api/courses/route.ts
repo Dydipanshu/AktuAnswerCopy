@@ -5,6 +5,10 @@ import { wrapper } from 'axios-cookiejar-support';
 import { jsonError, jsonOk, makeRequestId } from '../_utils';
 import { findSelectOptions } from '../_parse';
 
+function looksLikeLoginPage(html: string) {
+  return typeof html === 'string' && html.includes('txtUserID') && html.includes('txtPasswrd');
+}
+
 const BASE_URL = 'https://aktuexams.in';
 const BASE_PATH = '/AKTU';
 const ANSWER_URL = `${BASE_URL}${BASE_PATH}/StudentServices/FrmAnswerScriptInitialPageView.aspx`;
@@ -33,6 +37,13 @@ export async function POST(request: NextRequest) {
     const response = await client.get(ANSWER_URL, {
       headers: { ...HEADERS, 'Referer': DEFAULT_URL }
     });
+
+    if (looksLikeLoginPage(response.data)) {
+      return jsonError('E_LOGIN_INVALID', 'Invalid credentials', 401, {
+        requestId,
+        hint: 'Portal returned the login page when fetching courses.',
+      });
+    }
 
     // Extract course dropdown options
     const options = findSelectOptions(response.data, 'ddlexamname');

@@ -17,6 +17,10 @@ const HEADERS = {
   'Accept-Encoding': 'gzip, deflate, br',
 };
 
+function looksLikeLoginPage(html: string) {
+  return typeof html === 'string' && html.includes('txtUserID') && html.includes('txtPasswrd');
+}
+
 function extractHiddenFields(html: string) {
   const fields: Record<string, string> = {};
   
@@ -51,6 +55,13 @@ export async function POST(request: NextRequest) {
     const initialResp = await client.get(ANSWER_URL, {
       headers: { ...HEADERS, 'Referer': DEFAULT_URL }
     });
+
+    if (looksLikeLoginPage(initialResp.data)) {
+      return jsonError('E_LOGIN_INVALID', 'Invalid credentials', 401, {
+        requestId,
+        hint: 'Portal returned the login page when fetching subjects.',
+      });
+    }
 
     const hiddenFields = extractHiddenFields(initialResp.data);
     const evalOptions = findSelectOptions(initialResp.data, 'DdlEvalLevel');

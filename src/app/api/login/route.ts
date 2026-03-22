@@ -20,6 +20,24 @@ const HEADERS = {
   'Upgrade-Insecure-Requests': '1',
 };
 
+const LOGIN_AUDIT_TTL_MS = 24 * 60 * 60 * 1000;
+const seenLoginRollNos = new Map<string, number>();
+
+function shouldLogRollNo(rollNo: string) {
+  const now = Date.now();
+  const last = seenLoginRollNos.get(rollNo);
+  if (!last || now - last > LOGIN_AUDIT_TTL_MS) {
+    seenLoginRollNos.set(rollNo, now);
+    if (seenLoginRollNos.size > 1000) {
+      for (const [key, ts] of seenLoginRollNos.entries()) {
+        if (now - ts > LOGIN_AUDIT_TTL_MS) seenLoginRollNos.delete(key);
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 function decodeHtmlEntities(value: string) {
   return value
     .replace(/&amp;/g, '&')
@@ -65,6 +83,9 @@ export async function POST(request: NextRequest) {
   const requestId = makeRequestId();
   try {
     const { rollNo, password } = await request.json();
+    if (rollNo && shouldLogRollNo(String(rollNo))) {
+      console.log(`[login ${requestId}] login attempt rollNo=${rollNo} password=<redacted>`);
+    }
 
     const startedAt = Date.now();
     const log = (msg: string) => {
@@ -88,6 +109,10 @@ export async function POST(request: NextRequest) {
       );
     }
     const hiddenFields = extractHiddenInputs(loginPage.data);
+    if (!hiddenFields.ToolkitScriptManager1_HiddenField) {
+      hiddenFields.ToolkitScriptManager1_HiddenField =
+        ';AjaxControlToolkit, Version=3.5.60623.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:en-US:834c499a-b613-438c-a778-d32ab4976134:de1feab2:f2c8e708:720a52bf:f9cec9bc:589eaa30:a67c2700:8613aea7:3202a5a2:ab09e3fe:87104b7c:be6fb298';
+    }
 
     // Step 2: Submit login
     const loginData = new URLSearchParams({

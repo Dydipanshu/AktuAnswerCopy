@@ -128,7 +128,7 @@ export default function Home() {
 
     try {
       const statusController = new AbortController();
-      const statusTimeout = setTimeout(() => statusController.abort(), 20000);
+      const statusTimeout = setTimeout(() => statusController.abort(), 30000);
       let shouldProceed = true;
       try {
         const statusRes = await fetch('/api/status', { signal: statusController.signal });

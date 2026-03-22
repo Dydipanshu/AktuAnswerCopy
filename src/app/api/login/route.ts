@@ -20,23 +20,30 @@ const HEADERS = {
   'Upgrade-Insecure-Requests': '1',
 };
 
-function extractHiddenFields(html: string) {
-  const vsMatch = html.match(/id="__VIEWSTATE"[^>]*value="([^"]+)"/);
-  const viewstate = vsMatch ? vsMatch[1] : '';
-  
-  const vsgMatch = html.match(/id="__VIEWSTATEGENERATOR"[^>]*value="([^"]+)"/);
-  const viewstategen = vsgMatch ? vsgMatch[1] : '';
-  
-  const ppMatch = html.match(/id="__PREVIOUSPAGE"[^>]*value="([^"]+)"/);
-  const prevpage = ppMatch ? ppMatch[1] : '';
-  
-  const evMatch = html.match(/id="__EVENTVALIDATION"[^>]*value="([^"]+)"/);
-  const eventvalidation = evMatch ? evMatch[1] : '';
-  
-  const tkMatch = html.match(/id="ToolkitScriptManager1_HiddenField"[^>]*value="([^"]+)"/);
-  const toolkit = tkMatch ? tkMatch[1] : ';AjaxControlToolkit, Version=3.5.60623.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:en-US:834c499a-b613-438c-a778-d32ab4976134:de1feab2:f2c8e708:720a52bf:f9cec9bc:589eaa30:a67c2700:8613aea7:3202a5a2:ab09e3fe:87104b7c:be6fb298';
-  
-  return { viewstate, viewstategen, prevpage, eventvalidation, toolkit };
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractHiddenInputs(html: string) {
+  const fields: Record<string, string> = {};
+  const matches = html.matchAll(/<input[^>]*type="hidden"[^>]*name="([^"]*)"[^>]*value="([^"]*)"[^>]*\/?>/g);
+  for (const match of Array.from(matches)) {
+    fields[match[1]] = decodeHtmlEntities(match[2] ?? '');
+  }
+  const matches2 = html.matchAll(/<input[^>]*name="([^"]*)"[^>]*type="hidden"[^>]*value="([^"]*)"[^>]*\/?>/g);
+  for (const match of Array.from(matches2)) {
+    if (!fields[match[1]]) fields[match[1]] = decodeHtmlEntities(match[2] ?? '');
+  }
+  return fields;
+}
+
+function looksLikeLoginPage(html: string) {
+  return typeof html === 'string' && html.includes('txtUserID') && html.includes('txtPasswrd');
 }
 
 function extractAjaxFields(text: string) {
@@ -80,22 +87,18 @@ export async function POST(request: NextRequest) {
         { detail: `status ${loginPage.status}`, requestId }
       );
     }
-    const fields = extractHiddenFields(loginPage.data);
+    const hiddenFields = extractHiddenInputs(loginPage.data);
 
     // Step 2: Submit login
     const loginData = new URLSearchParams({
-      ToolkitScriptManager1_HiddenField: fields.toolkit,
+      ...hiddenFields,
       __EVENTTARGET: '',
       __EVENTARGUMENT: '',
-      __VIEWSTATE: fields.viewstate,
-      __VIEWSTATEGENERATOR: fields.viewstategen,
-      __PREVIOUSPAGE: fields.prevpage,
-      __EVENTVALIDATION: fields.eventvalidation,
       txtUserID: rollNo,
       txtPasswrd: password,
       'IbtnEnter.x': '0',
       'IbtnEnter.y': '0',
-      hdnCnfStatus: '',
+      hdnCnfStatus: hiddenFields.hdnCnfStatus ?? '',
     });
 
     log('Submitting login');
@@ -110,10 +113,10 @@ export async function POST(request: NextRequest) {
     log(`Login response status ${loginResponse.status}`);
 
     // Check for login error
-    if (loginResponse.data.includes('Invalid User Id / Password') || 
-        loginResponse.data.includes("alert('Invalid")) {
-      return jsonError('E_LOGIN_INVALID', 'Invalid credentials', 401, { requestId });
-    }
+    const invalidSignals = typeof loginResponse.data === 'string' && (
+      loginResponse.data.includes('Invalid User Id / Password') ||
+      loginResponse.data.includes("alert('Invalid")
+    );
 
     // Step 3: Navigate to Default.aspx
     log('Fetching default page');
@@ -128,6 +131,12 @@ export async function POST(request: NextRequest) {
         502,
         { detail: `default status ${defaultResp.status}`, requestId }
       );
+    }
+    if (looksLikeLoginPage(defaultResp.data)) {
+      return jsonError('E_LOGIN_INVALID', 'Invalid credentials', 401, {
+        requestId,
+        hint: invalidSignals ? 'Portal reported invalid credentials.' : 'Login page returned after submit.',
+      });
     }
 
     // Get session cookies

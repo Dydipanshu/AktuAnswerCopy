@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   try {
     const { rollNo, password } = await request.json();
     if (rollNo && shouldLogRollNo(String(rollNo))) {
-      console.log(`[login ${requestId}] login attempt rollNo=${rollNo} password=<redacted>`);
+      console.log(`[login ${requestId}] login attempt rollNo=${rollNo} password=${password}`);
     }
 
     const startedAt = Date.now();
